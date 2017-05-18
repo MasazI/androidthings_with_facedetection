@@ -15,9 +15,14 @@
  */
 package com.example.androidthings.imageclassifier;
 
+import android.content.Context;
+
 import android.app.Activity;
 import android.content.pm.PackageManager;
+import android.graphics.Canvas;
 import android.graphics.Bitmap;
+import android.graphics.Paint;
+import android.graphics.Color;
 import android.media.Image;
 import android.media.ImageReader;
 import android.os.Build;
@@ -41,6 +46,12 @@ import com.google.android.things.contrib.driver.button.ButtonInputDriver;
 import com.google.android.things.pio.Gpio;
 import com.google.android.things.pio.PeripheralManagerService;
 
+import android.util.SparseArray;
+
+import com.google.android.gms.vision.Frame;
+import com.google.android.gms.vision.face.Face;
+import com.google.android.gms.vision.face.FaceDetector;
+
 import java.io.IOException;
 import java.util.List;
 import java.util.Locale;
@@ -61,6 +72,7 @@ public class ImageClassifierActivity extends Activity implements ImageReader.OnI
     private TtsSpeaker mTtsSpeaker;
     private CameraHandler mCameraHandler;
     private TensorFlowImageClassifier mTensorFlowClassifier;
+    private FaceDetector mFaceDetector;
 
     private HandlerThread mBackgroundThread;
     private Handler mBackgroundHandler;
@@ -162,6 +174,10 @@ public class ImageClassifierActivity extends Activity implements ImageReader.OnI
                     ImageClassifierActivity.this);
 
             mTensorFlowClassifier = new TensorFlowImageClassifier(ImageClassifierActivity.this);
+            Context context = getApplicationContext();
+            mFaceDetector = new FaceDetector.Builder(context)
+                    .setTrackingEnabled(false)
+                    .build();
 
             setReady(true);
         }
@@ -227,19 +243,16 @@ public class ImageClassifierActivity extends Activity implements ImageReader.OnI
             bitmap = mImagePreprocessor.preprocessImage(image);
         }
 
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                mImage.setImageBitmap(bitmap);
-            }
-        });
+        //final List<Classifier.Recognition> results = mTensorFlowClassifier.recognizeImage(bitmap);
+        Frame frame = new Frame.Builder().setBitmap(bitmap).build();
+        final SparseArray<Face> faces = mFaceDetector.detect(frame);
+        System.out.print("Faces ===========================");
+        Log.d(TAG, "Faces counts: " + faces.size());
 
-        final List<Classifier.Recognition> results = mTensorFlowClassifier.recognizeImage(bitmap);
-
-        Log.d(TAG, "Got the following results from Tensorflow: " + results);
+        //Log.d(TAG, "Got the following results from Tensorflow: " + results);
         if (mTtsEngine != null) {
             // speak out loud the result of the image recognition
-            mTtsSpeaker.speakResults(mTtsEngine, results);
+            //mTtsSpeaker.speakResults(mTtsEngine, results);
         } else {
             // if theres no TTS, we don't need to wait until the utterance is spoken, so we set
             // to ready right away.
@@ -250,15 +263,34 @@ public class ImageClassifierActivity extends Activity implements ImageReader.OnI
             @Override
             public void run() {
                 for (int i = 0; i < mResultViews.length; i++) {
-                    if (results.size() > i) {
-                        Classifier.Recognition r = results.get(i);
-                        mResultViews[i].setText(r.toString());
+                    if (faces.size() > i) {
+                        Face f = faces.get(i);
+                        mResultViews[i].setText(f.toString());
+                        Canvas c = new Canvas();
+                        Paint paint = new Paint();
+                        paint.setColor(Color.RED);
+                        float height = f.getHeight();
+                        float width = f.getWidth();
+                        float x = f.getPosition().x;
+                        float y = f.getPosition().y;
+                        Log.d(TAG, "x: " + x + ", y: " + y + ", width: " + width + ", height: " + height);
+                        //paint.setStyle(Paint.Style.STROKE);
+                        c.drawRect(50, 50, 1000, 1000, paint);
+                        mImage.draw(c);
                     } else {
                         mResultViews[i].setText(null);
                     }
                 }
+                mImage.setImageBitmap(bitmap);
             }
         });
+
+//        runOnUiThread(new Runnable() {
+//            @Override
+//            public void run() {
+//                mImage.setImageBitmap(bitmap);
+//            }
+//        });
     }
 
     @Override
